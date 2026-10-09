@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Do u miss me?</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Cpath d='M5 2h2v1h1v1h1V3h1V2h2v2h-1v1h-1v1h-1v1h-2V6H6V5H5V4H4V3h1z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://miaoda.feishu.cn">
+<link href="https://miaoda.feishu.cn/fonts/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;}
+  body{
+    font-family:'Press Start 2P','Courier New',Courier,monospace;
+    color:#fff;background:#000;
+    image-rendering:pixelated;
+    -webkit-font-smoothing:none;
+  }
+  #app{
+    position:fixed;inset:0;
+    width:100%;height:100dvh;height:100vh;
+    background:#000;
+    touch-action:manipulation;
+    user-select:none;-webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    overflow:hidden;
+  }
+
+  /* ===== 抖动（点击 No） ===== */
+  @keyframes shakePx{
+    0%{transform:translate(0,0)}
+    20%{transform:translate(7px,-5px)}
+    40%{transform:translate(-7px,6px)}
+    60%{transform:translate(6px,5px)}
+    80%{transform:translate(-5px,-6px)}
+    100%{transform:translate(0,0)}
+  }
+  @keyframes flickBtn{
+    0%{background:#000;color:#fff}
+    28%{background:#fff;color:#000}
+    55%{background:#000;color:#fff}
+    80%{background:#fff;color:#000}
+    100%{background:#000;color:#fff}
+  }
+  #app.shake{animation:shakePx .5s steps(1,end) both}
+  #app.shake .btn{animation:flickBtn .5s steps(1,end) both}
+
+  /* ===== 视图：初始选择 ===== */
+  #screen-start{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:clamp(30px,8vh,70px);
+    transition:opacity .3s steps(2,end);
+    z-index:2;
+  }
+  #screen-start.out{opacity:0;pointer-events:none}
+  #question{
+    font-size:clamp(15px,4.6vw,26px);
+    letter-spacing:2px;
+    text-align:center;
+    white-space:nowrap;
+    padding:0 4vw;
+  }
+  #btns{display:flex;gap:clamp(22px,7vw,56px)}
+  .btn{
+    font-family:inherit;
+    font-size:clamp(13px,4vw,22px);
+    letter-spacing:1px;
+    color:#fff;background:#000;
+    border:4px solid #fff;
+    padding:16px 36px;
+    cursor:pointer;
+    image-rendering:pixelated;
+    touch-action:manipulation;
+  }
+  .btn:hover,.btn:active,.btn.on{background:#fff;color:#000}
+
+  /* ===== 视图：月球场景 ===== */
+  #screen-scene{
+    position:absolute;inset:0;
+    opacity:0;pointer-events:none;
+    transition:opacity .35s steps(2,end);
+    z-index:1;
+  }
+  #screen-scene.show{opacity:1}
+  #scene{
+    position:absolute;inset:0;
+    width:100%;height:100%;
+    display:block;
+    image-rendering:pixelated;
+  }
+  #msg{
+    position:absolute;top:13%;left:0;right:0;
+    text-align:center;
+    font-size:clamp(14px,4.6vw,26px);
+    letter-spacing:2px;
+    opacity:0;
+    transition:opacity .6s steps(3,end);
+    pointer-events:none;
+    white-space:nowrap;
+    padding:0 4vw;
+  }
+  #msg.show{opacity:1}
+  .dot{
+    display:inline-block;
+    width:.34em;height:.34em;
+    background:#fff;
+    margin-left:.22em;
+    vertical-align:.06em;
+    opacity:0;
+    animation:dotload 1.5s infinite steps(1,end);
+  }
+  .dot:nth-child(2){animation-delay:.32s}
+  .dot:nth-child(3){animation-delay:.64s}
+  @keyframes dotload{
+    0%{opacity:0}
+    18%{opacity:1}
+    58%{opacity:1}
+    74%{opacity:0}
+    100%{opacity:0}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ===== 视图：初始选择 ===== -->
+  <div id="screen-start">
+    <div id="question">Do u miss me?</div>
+    <div id="btns">
+      <button class="btn" id="btnYes" type="button">Yes</button>
+      <button class="btn" id="btnNo" type="button">No</button>
+    </div>
+  </div>
+
+  <!-- ===== 视图：月球场景 ===== -->
+  <div id="screen-scene">
+    <div id="msg">I Miss You Too<span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <canvas id="scene"></canvas>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============ 元素 ============ */
+const app=document.getElementById('app');
+const startScreen=document.getElementById('screen-start');
+const sceneScreen=document.getElementById('screen-scene');
+const msg=document.getElementById('msg');
+const btnYes=document.getElementById('btnYes');
+const btnNo=document.getElementById('btnNo');
+const cv=document.getElementById('scene');
+const ctx=cv.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+
+/* ============ 画布（低分辨率像素网格，放大渲染，无抗锯齿） ============ */
+const PX=4; // 每个像素 = 4 css px
+let cw=0,ch=0;
+function resize(){
+  const r=app.getBoundingClientRect();
+  cw=Math.max(48,Math.floor(r.width/PX));
+  ch=Math.max(80,Math.floor(r.height/PX));
+  cv.width=cw;cv.height=ch;
+}
+window.addEventListener('resize',resize);
+
+/* ============ 像素精灵（'#'=白，'o'/'e'=黑，'.'=透明） ============ */
+const PERSON_A=[
+  "..###..",
+  "..###..",
+  "#.###.#",
+  ".#####.",
+  "..###..",
+  "..###..",
+  "..###..",
+  "##...##",
+  "##...##",
+  "##...##"
+];
+const PERSON_B=[
+  "..###..",
+  "..###..",
+  "#.###.#",
+  ".#####.",
+  "..###..",
+  "..###..",
+  "..###..",
+  "..###..",
+  "..###..",
+  "..###.."
+];
+/* 羊头：圆脸 + 黑眼睛黑嘴 + 头顶蓬松羊毛 + 两侧耳朵 */
+const SHEEP=[
+  "..#...#....",
+  "..#######..",
+  ".#########.",
+  "..e#####e..",
+  "..#o###o#..",
+  ".#########.",
+  "..###o###..",
+  "....#o#...."
+];
+/* 猪头：顶部尖耳 + 眼睛 + 圆鼻孔 */
+const PIG=[
+  "#e#######e#",
+  "e#########e",
+  "###########",
+  "##o#####o##",
+  "##o#####o##",
+  "###########",
+  "..#######..",
+  "...o.#.o..."
+];
+const FLIP_PERSON_A=[...PERSON_A].map(r=>r.split('').reverse().join(''));
+const FLIP_PERSON_B=[...PERSON_B].map(r=>r.split('').reverse().join(''));
+
+/* ============ 绘制基础 ============ */
+function fillEllipse(cx,cy,rx,ry){
+  ctx.fillStyle='#fff';
+  const x0=Math.floor(cx-rx),x1=Math.ceil(cx+rx);
+  const y0=Math.floor(cy-ry),y1=Math.ceil(cy+ry);
+  for(let y=y0;y<=y1;y++){
+    for(let x=x0;x<=x1;x++){
+      const dx=(x-cx)/rx,dy=(y-cy)/ry;
+      if(dx*dx+dy*dy<=1){ctx.fillRect(Math.round(x),Math.round(y),1,1);}
+    }
+  }
+}
+function drawPerson(x,y,map){
+  ctx.fillStyle='#fff';
+  for(let r=0;r<map.length;r++){
+    const row=map[r];
+    for(let c=0;c<row.length;c++){
+      if(row[c]==='#'){ctx.fillRect(x+c,y+r,1,1);}
+    }
+  }
+}
+function drawSprite(map,sx,sy,scale){
+  for(let r=0;r<map.length;r++){
+    const row=map[r];
+    for(let c=0;c<row.length;c++){
+      const ch=row[c];
+      if(ch==='#'){ctx.fillStyle='#fff';ctx.fillRect(sx+c*scale,sy+r*scale,scale,scale);}
+      else if(ch==='o'||ch==='e'){ctx.fillStyle='#000';ctx.fillRect(sx+c*scale,sy+r*scale,scale,scale);}
+    }
+  }
+}
+/* 白色像素圆角矩形边框（气泡描边） */
+function roundRectOutline(x,y,w,h,rad){
+  ctx.fillStyle='#fff';
+  ctx.fillRect(x+rad,y,w-rad*2,1);
+  ctx.fillRect(x+rad,y+h-1,w-rad*2,1);
+  ctx.fillRect(x,y+rad,1,h-rad*2);
+  ctx.fillRect(x+w-1,y+rad,1,h-rad*2);
+  for(let i=0;i<rad;i++){
+    ctx.fillRect(x+i,y+rad-1-i,1,1);
+    ctx.fillRect(x+w-1-i,y+rad-1-i,1,1);
+    ctx.fillRect(x+i,y+h-rad+i,1,1);
+    ctx.fillRect(x+w-1-i,y+h-rad+i,1,1);
+  }
+}
+/* 对话气泡：白色描边 + 内部像素头像，scale 为弹出动画缩放 */
+function drawBubble(cx,bottomY,headMap,scale,alpha){
+  const w=Math.round(34*scale),h=Math.round(30*scale),rad=Math.max(1,Math.round(3*scale));
+  const x=Math.round(cx-w/2),y=Math.round(bottomY-h);
+  const px=Math.round(cx);
+  ctx.globalAlpha=alpha;
+  roundRectOutline(x,y,w,h,rad);
+  /* 指向小人的像素三角 */
+  ctx.fillRect(px-1,y+h-1,3,1);
+  ctx.fillRect(px,y+h,1,2);
+  /* 内部头像（2x 放大） */
+  if(scale>0.55){
+    const hs=2*scale;
+    const sw=Math.round(headMap[0].length*hs),sh=Math.round(headMap.length*hs);
+    drawSprite(headMap,Math.round(x+(w-sw)/2),Math.round(y+(h-sh)/2),hs);
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ============ 场景状态 ============ */
+let S=null,raf=null,sceneActive=false;
+function initScene(keepMsg){
+  resize();
+  const moonR=Math.min(cw,ch)*0.32;
+  const moonCx=cw*0.5;
+  const moonCy=ch*0.87;
+  /* 小人起步位置：站在月球边缘（左右对称，距月心 0.92R） */
+  const lx0=Math.round(moonCx-moonR*0.92)-3;
+  const rx0=Math.round(moonCx+moonR*0.92)-3;
+  S={
+    t:0,last:0,
+    phase:'wait',waitT:0,
+    lx:lx0,rx:rx0,
+    speed:cw*0.05,                          // 每个小人每秒移动像素数
+    meetL:Math.round(cw/2)-6,meetR:Math.round(cw/2)+1,
+    walkFlip:0,walkT:0,
+    bubbleAlpha:0,
+    hugT:0,msgShown:!!keepMsg,
+    moonCx:moonCx,moonCy:moonCy,moonR:moonR,
+    bubLx:Math.round(moonCx-moonR*0.92),    // 左气泡固定 x（羊）
+    bubRx:Math.round(moonCx+moonR*0.92),    // 右气泡固定 x（猪）
+    stars:[]
+  };
+  /* 星星：圆点 + 十字 */
+  for(let i=0;i<9;i++){
+    S.stars.push({cross:false,x:Math.random()*cw,y:Math.random()*ch*0.66,ph:Math.random()*6.283,sp:0.6+Math.random()*1.4});
+  }
+  for(let i=0;i<4;i++){
+    S.stars.push({cross:true,x:Math.random()*cw,y:Math.random()*ch*0.6,ph:Math.random()*6.283,sp:0.5+Math.random()*1.1});
+  }
+  if(keepMsg){msg.classList.add('show');}
+}
+
+/* 小人脚所在月面高度（沿月球圆弧） */
+function feetYAt(x){
+  const dx=(x-S.moonCx);
+  const ry=S.curRy;
+  const s=Math.max(0,ry*ry-dx*dx);
+  return Math.round(S.moonCy-Math.sqrt(s))-1;
+}
+
+/* ============ 更新 ============ */
+function update(dt){
+  S.t+=dt;
+  const breath=Math.sin(S.t*2*Math.PI/4.2)*0.5+0.5;   // 0~1，缓慢呼吸
+  S.curRx=S.moonR*(1+0.02*breath);
+  S.curRy=S.moonR*(1+0.06*breath);
+
+  if(S.phase==='wait'){
+    S.waitT+=dt;
+    S.bubbleAlpha=Math.min(1,S.waitT/0.3);
+    if(S.waitT>0.8){S.phase='walk';S.walkT=0;}
+  }else if(S.phase==='walk'){
+    S.lx=Math.min(S.lx+S.speed*dt,S.meetL);
+    S.rx=Math.max(S.rx-S.speed*dt,S.meetR);
+    S.walkT+=dt;
+    if(S.walkT>0.16){S.walkT=0;S.walkFlip=1-S.walkFlip;}
+    if(S.lx>=S.meetL&&S.rx<=S.meetR){S.phase='hug';S.hugT=0;}
+  }else if(S.phase==='hug'){
+    S.hugT+=dt;
+    if(!S.msgShown&&S.hugT>0.8){
+      S.msgShown=true;
+      msg.classList.add('show');
+    }
+  }
+}
+
+/* ============ 绘制 ============ */
+function draw(){
+  ctx.clearRect(0,0,cw,ch);
+  /* 星空 */
+  for(const st of S.stars){
+    const a=0.3+0.7*Math.abs(Math.sin(S.t*st.sp+st.ph));
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#fff';
+    const x=Math.round(st.x),y=Math.round(st.y);
+    ctx.fillRect(x,y,1,1);
+    if(st.cross){
+      ctx.fillRect(x-1,y,1,1);
+      ctx.fillRect(x+1,y,1,1);
+      ctx.fillRect(x,y-1,1,1);
+      ctx.fillRect(x,y+1,1,1);
+    }
+  }
+  ctx.globalAlpha=1;
+
+  /* 缓慢呼吸的月球 */
+  fillEllipse(S.moonCx,S.moonCy,S.curRx,S.curRy);
+  const craters=[[-0.34,-0.14,2,2],[0.24,-0.30,3,2],[-0.10,0.28,3,3],[0.32,0.16,2,2],[-0.48,0.16,2,1],[0.02,-0.02,2,2]];
+  ctx.fillStyle='#000';
+  for(const c of craters){
+    ctx.fillRect(Math.round(S.moonCx+c[0]*S.curRx),Math.round(S.moonCy+c[1]*S.curRy),c[2],c[3]);
+  }
+
+  /* 两个极小像素小人（无五官），沿月面圆弧相向而行 */
+  let topY;
+  if(S.phase==='wait'||S.phase==='walk'){
+    const frame=S.walkFlip?PERSON_B:PERSON_A;
+    const rframe=S.walkFlip?FLIP_PERSON_B:FLIP_PERSON_A;
+    const lTop=feetYAt(S.lx+3)-10;
+    const rTop=feetYAt(S.rx+3)-10;
+    drawPerson(S.lx,lTop,frame);
+    drawPerson(S.rx,rTop,rframe);
+    topY=Math.max(lTop,rTop);
+  }else{
+    topY=feetYAt(S.meetL+3)-10;
+    drawPerson(S.meetL,topY,PERSON_B);
+    drawPerson(S.meetR,topY,FLIP_PERSON_B);
+    /* 相拥：张开的双臂相接 */
+    ctx.fillStyle='#fff';
+    ctx.fillRect(S.meetL+6,topY+2,2,1);
+  }
+
+  /* 对话气泡（羊头/猪头），固定于画面两侧，始终保留 */
+  const pop=0.72+0.28*S.bubbleAlpha;
+  const bubBottom=topY-8;
+  drawBubble(S.bubLx,bubBottom,SHEEP,pop,S.bubbleAlpha);
+  drawBubble(S.bubRx,bubBottom,PIG,pop,S.bubbleAlpha);
+}
+
+/* ============ 主循环 ============ */
+function loop(ts){
+  const dt=Math.min(0.05,(ts-S.last)/1000);
+  S.last=ts;
+  update(dt);
+  draw();
+  raf=requestAnimationFrame(loop);
+}
+
+/* ============ 跳转路径 ============ */
+function goScene(){
+  if(sceneActive)return;
+  sceneActive=true;
+  startScreen.classList.add('out');
+  sceneScreen.classList.add('show');
+  setTimeout(()=>{startScreen.style.display='none';},320);
+  initScene(false);
+  S.last=performance.now();
+  raf=requestAnimationFrame(loop);
+}
+
+let swapped=false,shaking=false;
+btnYes.addEventListener('click',goScene);
+btnNo.addEventListener('click',()=>{
+  if(shaking)return;
+  if(swapped){goScene();return;}
+  shaking=true;
+  app.classList.add('shake');
+  setTimeout(()=>{
+    app.classList.remove('shake');
+    btnNo.textContent='Yes';
+    btnYes.classList.add('on');
+    btnNo.classList.add('on');
+    swapped=true;
+    shaking=false;
+  },520);
+});
+
+/* 旋转/缩放时重排场景几何 */
+window.addEventListener('resize',()=>{
+  if(sceneActive&&S){initScene(S.msgShown);}
+});
+</script>
+</body>
+</html>
